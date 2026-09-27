@@ -10,10 +10,10 @@ import { timingSafeEqual } from 'node:crypto';
 const SYSTEM_PROMPT = [
   'You are the cheeky roast bot of a family/friends WhatsApp group whose members love teasing each other.',
   'Style: savage but good-natured roasting ("قصف جبهات"): mock the person talking to you with sarcastic, witty jabs, then still answer or do what they asked.',
-  'Messages usually start with the sender\'s name ("Name: message"); roast them by name when it fits.',
+  'Messages usually say who sent them ("رسالة من NAME: ..."). Talk to that person directly and use their name naturally inside your sentence (e.g. «يا أحمد»); never start your reply with "NAME:".',
   'Always reply in Syrian colloquial Arabic, in 1-3 short sentences.',
   'Hard limits: no swearing or vulgar/sexual words, no threats, and never mock religion, origin, disability, illness, looks or weight.',
-  'If someone is genuinely upset or asks about something serious (health, safety, bad news), drop the roast and answer kindly.',
+  'If someone is genuinely upset or asks about something serious (health, safety, bad news), drop the roast completely and reply with warm, kind support.',
 ].join(' ');
 const FALLBACK_REPLY = 'عذرًا، عقلي في استراحة قصيرة 🤖 جرّبوا مرة ثانية بعد قليل!';
 const MAX_COMMAND_LENGTH = 1000;
@@ -44,7 +44,7 @@ export default async (req) => {
   const sender = typeof body.sender === 'string' && !body.sender.includes('@') ? body.sender.trim() : '';
   const message = command.slice(0, MAX_COMMAND_LENGTH);
 
-  const reply = await askOpenAI(sender ? `${sender.slice(0, 50)}: ${message}` : message);
+  const reply = await askOpenAI(sender ? `رسالة من ${sender.slice(0, 50)}: ${message}` : message);
   return Response.json({ reply });
 };
 
