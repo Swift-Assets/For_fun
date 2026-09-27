@@ -1,0 +1,11 @@
+# Netlify hosts only the brain function (netlify/functions/brain.js).
+# The WhatsApp listener (listener/) needs a long-running process, so it is
+# NOT deployed here: it runs on a VPS under PM2.
+
+[build]
+  # No build step and no website. "public" only holds a placeholder page,
+  # so the rest of the repository is not published as static files.
+  publish = "public"
+
+[functions]
+  directory = "netlify/functions"

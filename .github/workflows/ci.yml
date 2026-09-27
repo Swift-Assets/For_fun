@@ -1,0 +1,43 @@
+# Dry-run gate for every pull request: install the dependencies of both parts
+# and syntax-check the JavaScript. (No test suite: this is a small hobby bot.)
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Install & syntax check (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            listener/package-lock.json
+
+      - name: Install brain dependencies (repo root)
+        run: npm ci
+
+      - name: Install listener dependencies
+        working-directory: listener
+        run: npm ci
+
+      - name: Syntax-check the brain
+        run: npm run check
+
+      - name: Syntax-check the listener
+        working-directory: listener
+        run: npm run check
