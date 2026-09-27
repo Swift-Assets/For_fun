@@ -2,7 +2,8 @@
 
 A small hobby bot for a family/friends WhatsApp group. Anyone in the group can
 send a message that starts with `!` (for example `!tell us a joke`) and the bot
-answers briefly, in Arabic. Every other message is ignored.
+answers briefly in Syrian Arabic, with a good-natured roast of whoever asked.
+Every other message is ignored.
 
 ## How it works
 
@@ -24,7 +25,7 @@ There are two parts:
 | Part | Runs on | What it does |
 | --- | --- | --- |
 | `listener/` | A VPS (e.g. Hetzner), kept alive by PM2 | Holds the WhatsApp Web session, watches **one** group, forwards `!` commands to the brain and posts the replies. It needs a long-running process, so it is **never** deployed to Netlify. |
-| `netlify/functions/brain.js` | Netlify Functions (serverless) | Stateless. Receives `{ command }`, asks OpenAI (`gpt-4o-mini`, max 150 tokens) for a short playful Arabic reply and returns `{ reply }`. If OpenAI fails, it still answers `200` with a friendly fallback reply. |
+| `netlify/functions/brain.js` | Netlify Functions (serverless) | Stateless. Receives `{ command, sender }`, asks OpenAI (`gpt-4o-mini`, max 150 tokens) for a short, teasing roast-style reply in Syrian Arabic that pokes fun at the sender by name (no swearing, nothing about religion, origin, illness or looks) and returns `{ reply }`. If OpenAI fails, it still answers `200` with a friendly fallback reply. |
 
 ## Repository layout
 
