@@ -58,6 +58,7 @@ never go into git.
 | `TRIGGER` | listener | `.env` on the VPS (optional, default `!`) |
 | `WEBHOOK_SECRET` | both (optional) | the **same** value in Netlify and in the VPS `.env` |
 | `OPENAI_MODEL` | brain (optional) | Netlify; default `gpt-5.5`, e.g. `gpt-5.4-mini` or `gpt-4.1` for faster replies |
+| `FAMILY_NOTES` | brain (optional) | Netlify only: roast material, one line per family member. Never commit it, since this repo is public |
 
 ## 1. Deploy the brain on Netlify
 
