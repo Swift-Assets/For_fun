@@ -8,13 +8,18 @@
 import { timingSafeEqual } from 'node:crypto';
 
 const SYSTEM_PROMPT = [
-  'You are the cheeky roast bot of a family/friends WhatsApp group whose members love teasing each other.',
-  'Style: savage but good-natured roasting ("قصف جبهات"): mock the person talking to you with sarcastic, witty jabs, then still answer or do what they asked.',
+  'You are the cheeky roast bot of a Syrian family/friends WhatsApp group whose members love teasing each other.',
+  'Style: cheeky, lively ("نغش") and savage but good-natured roasting ("قصف جبهات"): mock the person talking to you with sarcastic, witty jabs, then still answer or do what they asked.',
+  'Be genuinely funny: short punchlines, exaggeration and surprising comparisons from everyday Syrian family life (for inspiration only, pick a fresh angle each time: the relatives\' group chat, mum\'s marriage questions, the cousin who became a doctor, sleeping till noon, being late, exam results, food at family gatherings). Never explain a joke.',
+  'When asked for a joke, tell a short Syrian-style joke with a clever twist (e.g. about أبو العبد or a stingy neighbour). No riddles, no puns translated from English, no "why did the chicken..." jokes.',
   'Messages usually say who sent them ("رسالة من NAME: ..."). Talk to that person directly and use their name naturally inside your sentence (e.g. «يا أحمد»); never start your reply with "NAME:".',
   'Always reply in Syrian colloquial Arabic, in 1-3 short sentences.',
-  'Hard limits: no swearing or vulgar/sexual words, no threats, and never mock religion, origin, disability, illness, looks or weight.',
+  'The family knows you are a bot and is fine with jokes about looks, weight and politics, as long as they stay playful.',
+  'Hard limits, also inside jokes about made-up characters: no swearing or vulgar/sexual words, no threats, and never mock religion, origin, disability or illness.',
   'If someone is genuinely upset or asks about something serious (health, safety, bad news), drop the roast completely and reply with warm, kind support.',
 ].join(' ');
+// Overridable with the OPENAI_MODEL env var in Netlify, no code change needed.
+const DEFAULT_MODEL = 'gpt-5.5';
 const FALLBACK_REPLY = 'عذرًا، عقلي في استراحة قصيرة 🤖 جرّبوا مرة ثانية بعد قليل!';
 const MAX_COMMAND_LENGTH = 1000;
 
@@ -55,6 +60,7 @@ async function askOpenAI(userMessage) {
     return FALLBACK_REPLY;
   }
 
+  const model = Netlify.env.get('OPENAI_MODEL') || DEFAULT_MODEL;
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -63,8 +69,8 @@ async function askOpenAI(userMessage) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        max_tokens: 150,
+        model,
+        ...replyLimits(model),
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userMessage },
@@ -85,6 +91,17 @@ async function askOpenAI(userMessage) {
     console.error('OpenAI request failed:', err);
     return FALLBACK_REPLY;
   }
+}
+
+function replyLimits(model) {
+  // Older chat models (gpt-4o, gpt-4.1, ...) take max_tokens.
+  if (!model.startsWith('gpt-5')) return { max_tokens: 150 };
+  // gpt-5 family models can "think" before answering; switch that off for quick,
+  // cheap chat replies. The original gpt-5 / gpt-5-mini only go down to "minimal".
+  return {
+    max_completion_tokens: 300,
+    reasoning_effort: /^gpt-5(-|$)/.test(model) ? 'minimal' : 'none',
+  };
 }
 
 function safeEqual(a, b) {
