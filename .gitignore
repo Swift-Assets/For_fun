@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Secrets: real values live only in Netlify env vars and the VPS .env
+.env
+.env.*
+!.env.example
+
+# WhatsApp login session (listener/auth_session/). Anyone holding it can use
+# the linked WhatsApp account, so treat it like a password.
+auth_session/
+
+# Netlify CLI local state
+.netlify/
+
+# Logs and OS clutter
+*.log
+npm-debug.log*
+.DS_Store

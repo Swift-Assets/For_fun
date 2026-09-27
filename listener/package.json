@@ -1,0 +1,24 @@
+{
+  "name": "whatsapp-family-bot-listener",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Long-running WhatsApp listener: forwards \"!\" commands from one group to the brain and posts the replies",
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "check": "node --check index.js && node --check ecosystem.config.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:restart": "pm2 restart whatsapp-family-bot",
+    "pm2:stop": "pm2 stop whatsapp-family-bot",
+    "pm2:logs": "pm2 logs whatsapp-family-bot"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "pino": "^9.14.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
