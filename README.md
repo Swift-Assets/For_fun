@@ -15,7 +15,7 @@ listener/  (Node.js + Baileys, runs on a VPS under PM2)
    │  POST { command, sender }
    ▼
 netlify/functions/brain.js  (Netlify Function)
-   │  asks OpenAI gpt-4o-mini
+   │  asks OpenAI (gpt-5.5 by default)
    ▼
 { reply }  ──► the listener posts it back into the group
 ```
@@ -25,7 +25,7 @@ There are two parts:
 | Part | Runs on | What it does |
 | --- | --- | --- |
 | `listener/` | A VPS (e.g. Hetzner), kept alive by PM2 | Holds the WhatsApp Web session, watches **one** group, forwards `!` commands to the brain and posts the replies. It needs a long-running process, so it is **never** deployed to Netlify. |
-| `netlify/functions/brain.js` | Netlify Functions (serverless) | Stateless. Receives `{ command, sender }`, asks OpenAI (`gpt-4o-mini`, max 150 tokens) for a short, teasing roast-style reply in Syrian Arabic that pokes fun at the sender by name (no swearing, nothing about religion, origin, illness or looks) and returns `{ reply }`. If OpenAI fails, it still answers `200` with a friendly fallback reply. |
+| `netlify/functions/brain.js` | Netlify Functions (serverless) | Stateless. Receives `{ command, sender }`, asks OpenAI (`gpt-5.5` by default, set `OPENAI_MODEL` to change it) for a short, teasing roast-style reply in Syrian Arabic that pokes fun at the sender by name (no swearing or sexual content; religion, origin, disability and illness are off-limits) and returns `{ reply }`. If OpenAI fails, it still answers `200` with a friendly fallback reply. |
 
 ## Repository layout
 
@@ -57,6 +57,7 @@ never go into git.
 | `BRAIN_WEBHOOK_URL` | listener | `.env` on the VPS |
 | `TRIGGER` | listener | `.env` on the VPS (optional, default `!`) |
 | `WEBHOOK_SECRET` | both (optional) | the **same** value in Netlify and in the VPS `.env` |
+| `OPENAI_MODEL` | brain (optional) | Netlify; default `gpt-5.5`, e.g. `gpt-5.4-mini` or `gpt-4.1` for faster replies |
 
 ## 1. Deploy the brain on Netlify
 
