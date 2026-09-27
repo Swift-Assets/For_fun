@@ -1,14 +1,20 @@
 // "The brain" of the WhatsApp family bot (a Netlify Function).
 //
 // POST { command, sender }  ->  200 { reply }
-// Stateless: asks OpenAI for a short, playful Arabic reply and returns it.
+// Stateless: asks OpenAI for a short, teasing (roast-style) reply in Syrian
+// Arabic that pokes fun at the sender by name, and returns it.
 // If OpenAI fails for any reason it still answers 200 with a friendly fallback.
 
 import { timingSafeEqual } from 'node:crypto';
 
-const SYSTEM_PROMPT =
-  'You are a playful, friendly bot in a family/friends WhatsApp group. ' +
-  'Always reply briefly (1-3 sentences) in Arabic, and keep it suitable for all ages.';
+const SYSTEM_PROMPT = [
+  'You are the cheeky roast bot of a family/friends WhatsApp group whose members love teasing each other.',
+  'Style: savage but good-natured roasting ("قصف جبهات"): mock the person talking to you with sarcastic, witty jabs, then still answer or do what they asked.',
+  'Messages usually start with the sender\'s name ("Name: message"); roast them by name when it fits.',
+  'Always reply in Syrian colloquial Arabic, in 1-3 short sentences.',
+  'Hard limits: no swearing or vulgar/sexual words, no threats, and never mock religion, origin, disability, illness, looks or weight.',
+  'If someone is genuinely upset or asks about something serious (health, safety, bad news), drop the roast and answer kindly.',
+].join(' ');
 const FALLBACK_REPLY = 'عذرًا، عقلي في استراحة قصيرة 🤖 جرّبوا مرة ثانية بعد قليل!';
 const MAX_COMMAND_LENGTH = 1000;
 
@@ -33,11 +39,16 @@ export default async (req) => {
     return Response.json({ error: 'Missing "command" in the JSON body' }, { status: 400 });
   }
 
-  const reply = await askOpenAI(command.slice(0, MAX_COMMAND_LENGTH));
+  // Prefix the sender's display name so the bot can tease them by name. Skip raw
+  // WhatsApp IDs (they contain "@"), which the listener sends when there is no name.
+  const sender = typeof body.sender === 'string' && !body.sender.includes('@') ? body.sender.trim() : '';
+  const message = command.slice(0, MAX_COMMAND_LENGTH);
+
+  const reply = await askOpenAI(sender ? `${sender.slice(0, 50)}: ${message}` : message);
   return Response.json({ reply });
 };
 
-async function askOpenAI(command) {
+async function askOpenAI(userMessage) {
   const apiKey = Netlify.env.get('OPENAI_API_KEY');
   if (!apiKey) {
     console.error('OPENAI_API_KEY is not set');
@@ -56,7 +67,7 @@ async function askOpenAI(command) {
         max_tokens: 150,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: command },
+          { role: 'user', content: userMessage },
         ],
       }),
       // Give up before Netlify's function timeout so the fallback still gets sent.
