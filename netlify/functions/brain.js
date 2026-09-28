@@ -67,8 +67,12 @@ export default async (req) => {
   const message = command.slice(0, MAX_COMMAND_LENGTH);
 
   const notes = Netlify.env.get('FAMILY_NOTES')?.trim();
-  const systemPrompt = notes ? `${SYSTEM_PROMPT} ${familyContext(notes, sender, message)}` : SYSTEM_PROMPT;
-  const reply = await askOpenAI(systemPrompt, sender ? `رسالة من ${sender.slice(0, 50)}: ${message}` : message);
+  const family = notes ? familyContext(notes, sender, message) : null;
+  const systemPrompt = family ? `${SYSTEM_PROMPT} ${family.prompt}` : SYSTEM_PROMPT;
+  // Use the notes' name for a known sender: a WhatsApp profile name can be a
+  // nickname or even a child's name, which made the bot talk to the wrong person.
+  const name = family?.senderName || sender;
+  const reply = await askOpenAI(systemPrompt, name ? `رسالة من ${name.slice(0, 50)}: ${message}` : message);
   return Response.json({ reply });
 };
 
@@ -115,15 +119,14 @@ async function askOpenAI(systemPrompt, userMessage) {
 // The model has no memory between messages and tends to reach for the same
 // "best" fact every time, so the variety comes from here: every request shuffles
 // each person's facts and names one random fact for the sender and for anyone the
-// message mentions.
+// message mentions. Also returns the notes' name for the sender, when known.
 function familyContext(notes, sender, message) {
   const people = parseFamilyNotes(notes);
   const who = normalizeName(sender);
   const text = normalizeName(message);
 
-  const involved = people.filter((p) =>
-    p.names.some((n) => (who.length >= 2 && (who.includes(n) || n.includes(who))) || text.includes(n)),
-  );
+  const isSender = (p) => who.length >= 2 && p.names.some((n) => who.includes(n) || n.includes(who));
+  const involved = people.filter((p) => isSender(p) || p.names.some((n) => text.includes(n)));
   const angles = involved.filter((p) => p.facts.length).map((p) => `${p.name}: ${pick(p.facts)}`);
 
   const listing = people
@@ -132,7 +135,7 @@ function familyContext(notes, sender, message) {
   const focus = angles.length
     ? `\nFor variety, build this reply around these randomly picked facts (unless the message clearly calls for others): ${angles.join(' | ')}`
     : '';
-  return `${FAMILY_NOTES_INTRO}\n${listing}${focus}`;
+  return { prompt: `${FAMILY_NOTES_INTRO}\n${listing}${focus}`, senderName: people.find(isSender)?.name };
 }
 
 function parseFamilyNotes(notes) {
