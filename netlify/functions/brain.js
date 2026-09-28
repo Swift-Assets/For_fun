@@ -2,29 +2,33 @@
 //
 // POST { command, sender }  ->  200 { reply }
 // Stateless: asks OpenAI for a short, teasing (roast-style) reply in Syrian
-// Arabic that pokes fun at the sender by name, and returns it.
+// Arabic that pokes fun at whoever the message is about (the sender, unless
+// they order a roast of someone else), and returns it.
 // If OpenAI fails for any reason it still answers 200 with a friendly fallback.
 
 import { timingSafeEqual } from 'node:crypto';
 
 // The family asked for a merciless roast bot: only sex and religion are off-limits.
-// The few safety lines at the end (self-harm, real bad news, ethnic groups) stay.
+// The few safety lines at the end (self-harm, children, real bad news, ethnic
+// groups) stay.
 const SYSTEM_PROMPT = [
   'You are "المتنمّر", the savage roast bot of a Syrian family WhatsApp group that loves brutal teasing. Everyone knows you are a bot and wants you merciless.',
-  'Your job: roast the person talking to you as hard and as funny as you can (their looks, weight, age, laziness, cooking, job, love life, failures, anything), then still answer or do what they asked.',
+  'Your job: roast the target of each message as hard and as funny as you can (their looks, weight, age, laziness, cooking, job, love life, failures, anything), then still answer or do what was asked.',
+  'The target is whoever the message is about. When the sender orders you to roast, tease or judge someone else, or asks about them (e.g. «تنمّر على مازن», «شو رأيك بمازن؟», «رد على مازن»), that person is the target and the sender gets no jab at all: you are on the sender\'s side this time. Only a message that is not about anyone else (like «صباح الخير» or «تنمّر عليّ») makes the sender the target.',
   'How to be funny: one sharp, specific exaggeration or unexpected comparison, with the punchline at the very end, in 1-2 short sentences. Pick the most savage and surprising angle, not the obvious one, and avoid stock gags (like something «بيطلب لجوء»). Vary your openings; do not always start with the name.',
   'Never soften it: no compliments, no "بس بصراحة قلبك طيب", no apologies, no explaining the joke.',
   'Use emojis generously: 2-4 per reply that match this joke\'s topic (food, sleep, phone, money, cars...), a different mix each time rather than the same set, but no laughing emojis when someone shares bad news.',
-  'When asked for a joke, tell a short, savage Syrian-style joke, ideally at the asker\'s expense. No riddles, no puns translated from English.',
+  'When asked for a joke, tell a short, savage Syrian-style joke, ideally about the target. No riddles, no puns translated from English.',
   'Style examples (tone only, never reuse their wording):',
   '«رسالة من أبو خالد: شو رأيك فيني؟» → «يا أبو خالد، لو الغباء بينباع بالكيلو كنت فتحت فرع بكل محافظة.»',
   '«رسالة من ريم: شو عاصمة ألمانيا؟» → «برلين يا عبقرية… المعلومة الوحيدة اللي رح تعرفيها اليوم، فاستمتعي فيها.»',
   '«رسالة من أحمد: نزلت 3 كيلو» → «مبروك يا أحمد! بقي عليك 40 وبتصير بني آدم طبيعي 🎉»',
   '«رسالة من لمى: صباح الخير» → «صباح الخير عالساعة تنتين الضهر؟ إنتِ ما بتصحي يا لمى، إنتِ بتعملي ريستارت متل ويندوز XP.»',
+  '«رسالة من سامر: تنمّر على مازن» → «مازن حياته متل GPS بلا نت: عم يقول "إعادة حساب المسار" من 15 سنة 📉»',
   'Messages usually say who sent them ("رسالة من NAME: ..."). Use the name naturally (e.g. «يا أحمد»); never start your reply with "NAME:".',
   'Always reply in Syrian colloquial Arabic.',
   'The only limits: nothing sexual (no sexual jokes, innuendo or sexual swear words, including insults about someone\'s mother or sisters) and nothing about religion.',
-  'Also: never tell anyone to hurt or kill themselves, roast the person and not ethnic groups or nationalities, and if someone shares real bad news or distress (illness, a death, an accident) drop the roast and be kind.',
+  'Also: never tell anyone to hurt or kill themselves, never roast children (if asked to, roast the sender for picking on a kid instead), roast the person and not ethnic groups or nationalities, and if someone shares real bad news or distress (illness, a death, an accident) drop the roast and be kind.',
 ].join(' ');
 // Personal roast material comes from the FAMILY_NOTES env var in Netlify; it must
 // never be committed, since this repository is public. Format:
@@ -32,8 +36,8 @@ const SYSTEM_PROMPT = [
 //   - one fact per line
 const FAMILY_NOTES_INTRO =
   'Family notes (roast material about the real members; "# NAME (aliases) note" starts a person, "-" lines are their facts): ' +
-  'base personal jokes on them, one fact per reply, exaggerating freely, and keep rotating: never lean on the same fact or topic (like food) reply after reply. ' +
-  'Match the sender\'s display name to a member loosely (English spelling, nicknames, emojis) and call them by the NAME. ' +
+  'base personal jokes on the target\'s facts, one fact per reply, exaggerating freely, and keep rotating: never lean on the same fact or topic (like food) reply after reply. ' +
+  'Match the sender\'s display name and the names in the message to members loosely (English spelling, nicknames, emojis) and call people by their NAME. ' +
   'Tease anyone marked as sensitive more lightly, and never insult the children mentioned.';
 // Overridable with the OPENAI_MODEL env var in Netlify, no code change needed.
 const DEFAULT_MODEL = 'gpt-5.5';
@@ -67,7 +71,7 @@ export default async (req) => {
   const message = command.slice(0, MAX_COMMAND_LENGTH);
 
   const notes = Netlify.env.get('FAMILY_NOTES')?.trim();
-  const family = notes ? familyContext(notes, sender, message) : null;
+  const family = notes ? familyContext(notes, sender) : null;
   const systemPrompt = family ? `${SYSTEM_PROMPT} ${family.prompt}` : SYSTEM_PROMPT;
   // Use the notes' name for a known sender: a WhatsApp profile name can be a
   // nickname or even a child's name, which made the bot talk to the wrong person.
@@ -118,22 +122,20 @@ async function askOpenAI(systemPrompt, userMessage) {
 
 // The model has no memory between messages and tends to reach for the same
 // "best" fact every time, so the variety comes from here: every request shuffles
-// each person's facts and names one random fact for the sender and for anyone the
-// message mentions. Also returns the notes' name for the sender, when known.
-function familyContext(notes, sender, message) {
+// each person's facts and picks one random fact per person. The model works out
+// the target from the message (nicknames, "roast me", ...) and uses that
+// person's fact. Also returns the notes' name for the sender, when known.
+function familyContext(notes, sender) {
   const people = parseFamilyNotes(notes);
   const who = normalizeName(sender);
-  const text = normalizeName(message);
-
   const isSender = (p) => who.length >= 2 && p.names.some((n) => who.includes(n) || n.includes(who));
-  const involved = people.filter((p) => isSender(p) || p.names.some((n) => text.includes(n)));
-  const angles = involved.filter((p) => p.facts.length).map((p) => `${p.name}: ${pick(p.facts)}`);
 
   const listing = people
     .map((p) => [p.header && `# ${p.header}`, ...shuffle(p.facts).map((f) => `- ${f}`)].filter(Boolean).join('\n'))
     .join('\n');
+  const angles = people.filter((p) => p.name && p.facts.length).map((p) => `${p.name}: ${pick(p.facts)}`);
   const focus = angles.length
-    ? `\nFor variety, build this reply around these randomly picked facts (unless the message clearly calls for others): ${angles.join(' | ')}`
+    ? `\nFor variety, a random fact was picked for each member. Make the target's picked fact the topic of this reply, even if another fact looks funnier (unless the message asks about something specific): ${angles.join(' | ')}`
     : '';
   return { prompt: `${FAMILY_NOTES_INTRO}\n${listing}${focus}`, senderName: people.find(isSender)?.name };
 }
@@ -157,8 +159,8 @@ function parseFamilyNotes(notes) {
   return people;
 }
 
-// Lower-case and unify common Arabic spelling variants so "هدى"/"هدي" or
-// "Ghaid"/"ghaid" still match.
+// Lower-case and unify common Arabic spelling variants so "منى"/"مني" or
+// "Sami"/"sami" still match.
 function normalizeName(s) {
   return s.trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
 }

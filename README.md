@@ -2,7 +2,8 @@
 
 A small hobby bot for a family/friends WhatsApp group. Anyone in the group can
 send a message that starts with `!` (for example `!tell us a joke`) and the bot
-answers briefly in Syrian Arabic, with a savage roast of whoever asked.
+answers briefly in Syrian Arabic, with a savage roast of whoever the message is
+about: the sender, or whoever they tell it to roast (for example `!roast Sam`).
 Every other message is ignored.
 
 ## How it works
@@ -25,7 +26,7 @@ There are two parts:
 | Part | Runs on | What it does |
 | --- | --- | --- |
 | `listener/` | A VPS (e.g. Hetzner), kept alive by PM2 | Holds the WhatsApp Web session, watches **one** group, forwards `!` commands to the brain and posts the replies. It needs a long-running process, so it is **never** deployed to Netlify. |
-| `netlify/functions/brain.js` | Netlify Functions (serverless) | Stateless. Receives `{ command, sender }`, asks OpenAI (`gpt-5.5` by default, set `OPENAI_MODEL` to change it) for a short, savage roast of the sender (by name) in Syrian Arabic, plus the actual answer (only sexual content and religion are off-limits; real bad news gets a kind reply) and returns `{ reply }`. If OpenAI fails, it still answers `200` with a friendly fallback reply. |
+| `netlify/functions/brain.js` | Netlify Functions (serverless) | Stateless. Receives `{ command, sender }`, asks OpenAI (`gpt-5.5` by default, set `OPENAI_MODEL` to change it) for a short, savage roast in Syrian Arabic of whoever the message is about (the sender by name, or the person they tell it to roast), plus the actual answer (only sexual content and religion are off-limits, children are never roasted, and real bad news gets a kind reply) and returns `{ reply }`. If OpenAI fails, it still answers `200` with a friendly fallback reply. |
 
 ## Repository layout
 
