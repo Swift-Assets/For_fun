@@ -14,7 +14,7 @@ const SYSTEM_PROMPT = [
   'Your job: roast the person talking to you as hard and as funny as you can (their looks, weight, age, laziness, cooking, job, love life, failures, anything), then still answer or do what they asked.',
   'How to be funny: one sharp, specific exaggeration or unexpected comparison, with the punchline at the very end, in 1-2 short sentences. Pick the most savage and surprising angle, not the obvious one, and avoid stock gags (like something «بيطلب لجوء»). Vary your openings; do not always start with the name.',
   'Never soften it: no compliments, no "بس بصراحة قلبك طيب", no apologies, no explaining the joke.',
-  'Use emojis generously: 2-4 fitting ones per reply (e.g. 😂🔥💀🙄😏) to punch up the jokes, but no laughing emojis when someone shares bad news.',
+  'Use emojis generously: 2-4 per reply that match this joke\'s topic (food, sleep, phone, money, cars...), a different mix each time rather than the same set, but no laughing emojis when someone shares bad news.',
   'When asked for a joke, tell a short, savage Syrian-style joke, ideally at the asker\'s expense. No riddles, no puns translated from English.',
   'Style examples (tone only, never reuse their wording):',
   '«رسالة من أبو خالد: شو رأيك فيني؟» → «يا أبو خالد، لو الغباء بينباع بالكيلو كنت فتحت فرع بكل محافظة.»',
@@ -26,11 +26,14 @@ const SYSTEM_PROMPT = [
   'The only limits: nothing sexual (no sexual jokes, innuendo or sexual swear words, including insults about someone\'s mother or sisters) and nothing about religion.',
   'Also: never tell anyone to hurt or kill themselves, roast the person and not ethnic groups or nationalities, and if someone shares real bad news or distress (illness, a death, an accident) drop the roast and be kind.',
 ].join(' ');
-// Personal roast material comes from the FAMILY_NOTES env var in Netlify (one line
-// per member); it must never be committed, since this repository is public.
+// Personal roast material comes from the FAMILY_NOTES env var in Netlify; it must
+// never be committed, since this repository is public. Format:
+//   # NAME (alias, alias) optional note, e.g. that someone is sensitive
+//   - one fact per line
 const FAMILY_NOTES_INTRO =
-  'Family notes (roast material about the real members): base personal jokes on them, one fact per reply, exaggerating freely. ' +
-  'Match the sender\'s display name to a member loosely (English spelling, nicknames, emojis) and call them by the name the notes use. ' +
+  'Family notes (roast material about the real members; "# NAME (aliases) note" starts a person, "-" lines are their facts): ' +
+  'base personal jokes on them, one fact per reply, exaggerating freely, and keep rotating: never lean on the same fact or topic (like food) reply after reply. ' +
+  'Match the sender\'s display name to a member loosely (English spelling, nicknames, emojis) and call them by the NAME. ' +
   'Tease anyone marked as sensitive more lightly, and never insult the children mentioned.';
 // Overridable with the OPENAI_MODEL env var in Netlify, no code change needed.
 const DEFAULT_MODEL = 'gpt-5.5';
@@ -63,11 +66,13 @@ export default async (req) => {
   const sender = typeof body.sender === 'string' && !body.sender.includes('@') ? body.sender.trim() : '';
   const message = command.slice(0, MAX_COMMAND_LENGTH);
 
-  const reply = await askOpenAI(sender ? `رسالة من ${sender.slice(0, 50)}: ${message}` : message);
+  const notes = Netlify.env.get('FAMILY_NOTES')?.trim();
+  const systemPrompt = notes ? `${SYSTEM_PROMPT} ${familyContext(notes, sender, message)}` : SYSTEM_PROMPT;
+  const reply = await askOpenAI(systemPrompt, sender ? `رسالة من ${sender.slice(0, 50)}: ${message}` : message);
   return Response.json({ reply });
 };
 
-async function askOpenAI(userMessage) {
+async function askOpenAI(systemPrompt, userMessage) {
   const apiKey = Netlify.env.get('OPENAI_API_KEY');
   if (!apiKey) {
     console.error('OPENAI_API_KEY is not set');
@@ -75,8 +80,6 @@ async function askOpenAI(userMessage) {
   }
 
   const model = Netlify.env.get('OPENAI_MODEL') || DEFAULT_MODEL;
-  const notes = Netlify.env.get('FAMILY_NOTES')?.trim();
-  const systemPrompt = notes ? `${SYSTEM_PROMPT} ${FAMILY_NOTES_INTRO}\n${notes}` : SYSTEM_PROMPT;
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -107,6 +110,67 @@ async function askOpenAI(userMessage) {
     console.error('OpenAI request failed:', err);
     return FALLBACK_REPLY;
   }
+}
+
+// The model has no memory between messages and tends to reach for the same
+// "best" fact every time, so the variety comes from here: every request shuffles
+// each person's facts and names one random fact for the sender and for anyone the
+// message mentions.
+function familyContext(notes, sender, message) {
+  const people = parseFamilyNotes(notes);
+  const who = normalizeName(sender);
+  const text = normalizeName(message);
+
+  const involved = people.filter((p) =>
+    p.names.some((n) => (who.length >= 2 && (who.includes(n) || n.includes(who))) || text.includes(n)),
+  );
+  const angles = involved.filter((p) => p.facts.length).map((p) => `${p.name}: ${pick(p.facts)}`);
+
+  const listing = people
+    .map((p) => [p.header && `# ${p.header}`, ...shuffle(p.facts).map((f) => `- ${f}`)].filter(Boolean).join('\n'))
+    .join('\n');
+  const focus = angles.length
+    ? `\nFor variety, build this reply around these randomly picked facts (unless the message clearly calls for others): ${angles.join(' | ')}`
+    : '';
+  return `${FAMILY_NOTES_INTRO}\n${listing}${focus}`;
+}
+
+function parseFamilyNotes(notes) {
+  const people = [];
+  for (const raw of notes.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith('#')) {
+      const header = line.replace(/^#+\s*/, '');
+      const [name, rest = ''] = header.split('(');
+      const aliases = rest.split(')')[0].split(/[,،]/);
+      const names = [name, ...aliases].map(normalizeName).filter((n) => n.length >= 2);
+      people.push({ header, name: name.trim(), names, facts: [] });
+    } else {
+      if (!people.length) people.push({ header: '', name: '', names: [], facts: [] });
+      people.at(-1).facts.push(line.replace(/^-+\s*/, ''));
+    }
+  }
+  return people;
+}
+
+// Lower-case and unify common Arabic spelling variants so "هدى"/"هدي" or
+// "Ghaid"/"ghaid" still match.
+function normalizeName(s) {
+  return s.trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
+}
+
+function shuffle(items) {
+  const a = [...items];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function pick(items) {
+  return items[Math.floor(Math.random() * items.length)];
 }
 
 function replyLimits(model) {
